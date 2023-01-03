@@ -1,7 +1,8 @@
-use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
+
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct Config {
@@ -21,12 +22,10 @@ struct YTChannel {
     playlist_end: Option<usize>,
 }
 
-fn main() -> Result<(), ()> {
+fn main() {
     let config = read_config();
 
-    download(config.channels.iter(), config.filter.as_str())?;
-
-    Ok(())
+    download(config.channels.iter(), config.filter.as_str());
 }
 
 fn read_config() -> Config {
@@ -35,10 +34,7 @@ fn read_config() -> Config {
     toml::from_str(&data).expect(&format!("Unable to parse {}", path))
 }
 
-fn download<'a>(
-    channels: impl Iterator<Item = &'a YTChannel>,
-    filter: &str,
-) -> Result<(), ()> {
+fn download<'a>(channels: impl Iterator<Item = &'a YTChannel>, filter: &str) {
     for channel in channels {
         // Check if new channel
         let new_channel = !directory_exists(&channel.display_name);
@@ -52,7 +48,7 @@ fn download<'a>(
         };
 
         // Build and run yt-dl command
-        let args = generate_cmd_args(&channel, &target_dir, &filter, new_channel)?;
+        let args = generate_cmd_args(&channel, &target_dir, &filter, new_channel);
         let output = Command::new("yt-dlp")
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
@@ -61,7 +57,7 @@ fn download<'a>(
             .expect("Failed to execute command");
         if !output.status.success() {
             eprintln!("{}", output.status);
-            return Err(());
+            continue;
         }
 
         if new_channel {
@@ -71,8 +67,6 @@ fn download<'a>(
             ));
         }
     }
-
-    Ok(())
 }
 
 fn generate_cmd_args(
@@ -80,8 +74,7 @@ fn generate_cmd_args(
     target_dir: &str,
     default_filter: &str,
     new_channel: bool,
-) -> Result<Vec<String>, ()> {
-
+) -> Vec<String> {
     let mut args = vec![
         "--format-sort".to_string(),
         "res,fps,vcodec,acodec".to_string(),
@@ -127,7 +120,7 @@ fn generate_cmd_args(
 
     args.push(channel_id_to_url(&channel.channel_id));
 
-    Ok(args)
+    args
 }
 
 fn directory_exists(path: &impl AsRef<Path>) -> bool {
