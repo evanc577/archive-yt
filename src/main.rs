@@ -10,6 +10,10 @@ struct Config {
     filter: String,
 }
 
+const fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize)]
 struct YTChannel {
     channel_id: String,
@@ -20,12 +24,20 @@ struct YTChannel {
     always_redownload: bool,
     custom_filter: Option<String>,
     playlist_end: Option<usize>,
+    #[serde(default = "default_true")]
+    enabled: bool,
 }
 
 fn main() {
     let config = read_config();
 
-    download(config.channels.iter(), config.filter.as_str());
+    if let Err(e) = download(config.channels.iter(), config.filter.as_str()) {
+        eprintln!("Failed to download {} channels:", e.len());
+        for channel in e {
+            eprintln!("  {} ({})", channel.channel_id, channel.display_name);
+        }
+        std::process::exit(1);
+    }
 }
 
 fn read_config() -> Config {
@@ -34,8 +46,17 @@ fn read_config() -> Config {
     toml::from_str(&data).expect(&format!("Unable to parse {}", path))
 }
 
-fn download<'a>(channels: impl Iterator<Item = &'a YTChannel>, filter: &str) {
+fn download<'a>(
+    channels: impl Iterator<Item = &'a YTChannel>,
+    filter: &str,
+) -> Result<(), Vec<&'a YTChannel>> {
+    let mut errored_channels = vec![];
+
     for channel in channels {
+        if !channel.enabled {
+            continue;
+        }
+
         // Check if new channel
         let new_channel = !directory_exists(&channel.display_name);
         let tmp_dir = format!(".{}.temp", &channel.display_name);
@@ -57,6 +78,7 @@ fn download<'a>(channels: impl Iterator<Item = &'a YTChannel>, filter: &str) {
             .expect("Failed to execute command");
         if !output.status.success() {
             eprintln!("{}", output.status);
+            errored_channels.push(channel);
             continue;
         }
 
@@ -66,6 +88,12 @@ fn download<'a>(channels: impl Iterator<Item = &'a YTChannel>, filter: &str) {
                 &tmp_dir, &channel.display_name
             ));
         }
+    }
+
+    if errored_channels.is_empty() {
+        Ok(())
+    } else {
+        Err(errored_channels)
     }
 }
 
@@ -79,7 +107,6 @@ fn generate_cmd_args(
         "--format-sort".to_string(),
         "res,fps,vcodec,acodec".to_string(),
         "--ignore-config".to_string(),
-        "--verbose".to_string(),
         "--all-subs".to_string(),
         "--embed-subs".to_string(),
         "--compat-options".to_string(),
